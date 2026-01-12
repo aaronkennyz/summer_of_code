@@ -1,551 +1,361 @@
+<?php
+/* ===================================================================
+   BACKEND SECTION (NO DATABASE REQUIRED)
+   This script saves data to a local 'slugworks_data.json' file automatically.
+   ===================================================================
+*/
+
+$dataFile = 'slugworks_data.json';
+
+// 1. Initialize Data if file doesn't exist
+if (!file_exists($dataFile)) {
+    $initialData = [
+        'projects' => [
+            ['id' => 1, 'title' => 'Distributed Cache System', 'description' => 'Implementing a distributed caching mechanism using Go.', 'tags' => 'Go, Distributed Systems', 'status' => 'Published'],
+            ['id' => 2, 'title' => 'GraphQL API Migration', 'description' => 'Migrating REST API to GraphQL.', 'tags' => 'Node.js, GraphQL', 'status' => 'Draft']
+        ],
+        'applications' => [
+            ['id' => 101, 'project_title' => 'Distributed Cache System', 'name' => 'Alice Smith', 'initials' => 'AS', 'email' => 'alice@uni.edu', 'year' => '3rd Year', 'proposal_snippet' => 'I have experience with Go routines...', 'status' => 'pending'],
+            ['id' => 102, 'project_title' => 'GraphQL API Migration', 'name' => 'Mike Kim', 'initials' => 'MK', 'email' => 'mike@tech.edu', 'year' => '2nd Year', 'proposal_snippet' => 'I am a Node.js enthusiast...', 'status' => 'pending']
+        ]
+    ];
+    file_put_contents($dataFile, json_encode($initialData));
+}
+
+// 2. Handle API Requests
+$action = $_GET['action'] ?? '';
+
+if ($action) {
+    header('Content-Type: application/json');
+    $currentData = json_decode(file_get_contents($dataFile), true);
+
+    if ($action === 'get_data') {
+        echo json_encode($currentData);
+        exit;
+    }
+
+    $input = json_decode(file_get_contents('php://input'), true);
+
+    if ($action === 'add_project' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $newProject = [
+            'id' => time(),
+            'title' => $input['title'],
+            'description' => $input['description'],
+            'tags' => is_array($input['tags']) ? implode(', ', $input['tags']) : $input['tags'],
+            'status' => 'Published'
+        ];
+        array_unshift($currentData['projects'], $newProject);
+        file_put_contents($dataFile, json_encode($currentData));
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
+    if ($action === 'update_app_status' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        foreach ($currentData['applications'] as &$app) {
+            if ($app['id'] == $input['id']) {
+                $app['status'] = $input['status'];
+                break;
+            }
+        }
+        file_put_contents($dataFile, json_encode($currentData));
+        echo json_encode(['success' => true]);
+        exit;
+    }
+
+    if ($action === 'delete_project' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        $currentData['projects'] = array_values(array_filter($currentData['projects'], function($p) use ($input) {
+            return $p['id'] != $input['id'];
+        }));
+        file_put_contents($dataFile, json_encode($currentData));
+        echo json_encode(['success' => true]);
+        exit;
+    }
+    exit;
+}
+?>
+
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mentor Dashboard - Slugworks SOE Summer of Code</title>
-
-    <!-- Tailwind CSS -->
+    <title>Mentor Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-
-    <!-- Phosphor Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
 
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    fontFamily: {
-                        sans: ['Roboto', 'sans-serif'],
-                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
                     colors: {
-                        'gsoc-blue': '#4285F4',
-                        'gsoc-red': '#EA4335',
-                        'gsoc-yellow': '#FBBC04',
-                        'gsoc-green': '#34A853',
-                        'gsoc-bg': '#F8F9FA',
+                        'brand-blue': '#4285F4',
+                        'brand-green': '#34A853',
+                        'brand-red': '#EA4335',
+                        'bg-surface': '#F3F4F6',
                     }
                 }
             }
         }
     </script>
-
     <style>
-        .sidebar-link {
-            transition: all 0.2s;
-        }
-
-        .sidebar-link.active {
-            background-color: #f0fdf4;
-            /* green-50 */
-            color: #166534;
-            /* green-800 */
-            border-right: 3px solid #34A853;
-        }
-
-        .sidebar-link:hover:not(.active) {
-            background-color: #f9fafb;
-        }
-
-        /* Status Badge Styles */
-        .status-pending {
-            background-color: #FEF3C7;
-            color: #92400E;
-        }
-
-        /* Yellow */
-        .status-approved {
-            background-color: #DCFCE7;
-            color: #166534;
-        }
-
-        /* Green */
-        .status-rejected {
-            background-color: #FEE2E2;
-            color: #991B1B;
-        }
-
-        /* Red */
+        .nav-item.active { background-color: #DEF7E5; color: #137333; }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 
-<body class="font-sans text-gray-700 bg-gsoc-bg flex h-screen overflow-hidden">
+<body class="bg-bg-surface text-gray-800 h-screen flex overflow-hidden">
 
-    <!-- Sidebar -->
-    <aside class="w-64 bg-white border-r border-gray-200 hidden md:flex flex-col">
-        <div class="h-16 flex items-center px-6 border-b border-gray-200">
-            <div class="flex items-center gap-2 font-bold text-xl text-gray-800">
-                <i class="ph ph-code text-gsoc-green text-2xl"></i>
-                <span>Mentor<span class="text-gsoc-green">Hub</span></span>
-            </div>
+    <aside class="w-72 bg-white border-r border-gray-200 flex flex-col hidden md:flex z-20">
+        
+        <div class="h-16 flex items-center px-6 border-b border-gray-100">
+            <a href="javascript:history.back()" class="flex items-center group text-gray-600 hover:text-gray-900 transition-colors w-full">
+                <div class="w-8 h-8 rounded-full bg-gray-50 border border-gray-200 group-hover:bg-gray-100 group-hover:border-gray-300 flex items-center justify-center mr-3 transition-all">
+                    <i class="ph ph-arrow-left text-lg"></i>
+                </div>
+                <span class="font-semibold text-lg">Back</span>
+            </a>
         </div>
 
-        <nav class="flex-1 overflow-y-auto py-4">
-            <ul class="space-y-1">
-                <li>
-                    <a href="#" onclick="switchTab('projects')" id="nav-projects"
-                        class="sidebar-link active flex items-center px-6 py-3 text-sm font-medium">
-                        <i class="ph ph-kanban text-lg mr-3"></i>
-                        My Projects
-                    </a>
-                </li>
-                <li>
-                    <a href="#" onclick="switchTab('applications')" id="nav-applications"
-                        class="sidebar-link flex items-center px-6 py-3 text-sm font-medium text-gray-600">
-                        <i class="ph ph-users-three text-lg mr-3"></i>
-                        Review Applications
-                        <span class="ml-auto bg-gsoc-red text-white py-0.5 px-2 rounded-full text-xs"
-                            id="pending-count">3</span>
-                    </a>
-                </li>
-            </ul>
-        </nav>
-
-        <div class="p-4 border-t border-gray-200">
-            <div class="flex items-center gap-3">
-                <div
-                    class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-gsoc-green font-bold">
-                    JD
-                </div>
-                <div>
-                    <p class="text-sm font-medium text-gray-900">John Doe</p>
-                    <p class="text-xs text-gray-500">Senior Mentor</p>
-                </div>
-            </div>
-            <a href="login.html"
-                class="mt-4 block w-full text-center px-4 py-2 border border-gray-300 rounded-md text-xs font-medium text-gray-700 hover:bg-gray-50">
-                Log Out
+        <nav class="flex-1 py-6 px-3 space-y-1 overflow-y-auto">
+            <a href="#" onclick="switchTab('projects')" id="nav-projects" class="nav-item active flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors group">
+                <i class="ph ph-kanban text-xl mr-3"></i> My Projects
             </a>
+            <a href="#" onclick="switchTab('applications')" id="nav-applications" class="nav-item flex items-center px-4 py-3 text-sm font-medium text-gray-600 rounded-lg hover:bg-gray-50 transition-colors group">
+                <i class="ph ph-users-three text-xl mr-3"></i> Applicants
+                <span id="pending-badge" class="ml-auto bg-brand-red text-white text-xs font-bold px-2 py-0.5 rounded-full hidden">0</span>
+            </a>
+        </nav>
+        
+        <div class="p-4 border-t border-gray-100">
+             <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer">
+                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-brand-blue font-bold">ME</div>
+                <div><p class="text-sm font-medium">Mentor Account</p><p class="text-xs text-gray-500">mentor@slugworks.in</p></div>
+            </div>
         </div>
     </aside>
 
-    <!-- Main Content -->
-    <div class="flex-1 flex flex-col overflow-hidden">
-
-        <!-- Mobile Header -->
-        <header class="md:hidden bg-white border-b border-gray-200 h-16 flex items-center justify-between px-4">
-            <div class="font-bold text-lg text-gray-800">MentorHub</div>
-            <button class="text-gray-500 hover:text-gray-700">
-                <i class="ph ph-list text-2xl"></i>
+    <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
+        
+        <header class="md:hidden bg-white border-b h-16 flex items-center justify-between px-4">
+            <button onclick="history.back()" class="flex items-center text-gray-700">
+                <i class="ph ph-arrow-left text-xl mr-2"></i>
+                <span class="font-bold text-lg">Back</span>
             </button>
+            <button class="p-2"><i class="ph ph-list text-2xl"></i></button>
         </header>
 
-        <!-- Main Scrollable Area -->
-        <main class="flex-1 overflow-y-auto p-4 sm:p-8">
+        <main class="flex-1 overflow-y-auto p-4 md:p-8 relative scroll-smooth">
+            
+            <div id="view-projects" class="fade-in max-w-6xl mx-auto">
+                <div class="flex justify-between items-center mb-8">
+                    <div><h1 class="text-3xl font-bold text-gray-900">Project Dashboard</h1><p class="text-gray-500 mt-1">Manage ideas & registrations.</p></div>
+                    <button onclick="toggleModal('project-modal')" class="px-5 py-2.5 bg-brand-green text-white rounded-lg font-medium hover:bg-green-700 shadow-sm flex items-center"><i class="ph ph-plus-circle text-lg mr-2"></i> Post Project</button>
+                </div>
 
-            <!-- PROJECTS SECTION -->
-            <div id="view-projects" class="max-w-5xl mx-auto">
-                <div class="flex justify-between items-center mb-6">
-                    <div>
-                        <h1 class="text-2xl font-bold text-gray-900">My Projects</h1>
-                        <p class="text-sm text-gray-500">Manage your project ideas and listings.</p>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center">
+                        <div class="p-3 rounded-full bg-blue-50 text-brand-blue mr-4"><i class="ph ph-rocket text-2xl"></i></div>
+                        <div><p class="text-sm text-gray-500">Active Projects</p><p class="text-2xl font-bold" id="stat-projects">0</p></div>
                     </div>
-                    <button onclick="toggleModal('project-modal')"
-                        class="flex items-center px-4 py-2 bg-gsoc-green text-white rounded-lg hover:bg-green-600 transition shadow-sm text-sm font-medium">
-                        <i class="ph ph-plus mr-2"></i> Post New Project
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center">
+                        <div class="p-3 rounded-full bg-yellow-50 text-yellow-600 mr-4"><i class="ph ph-users text-2xl"></i></div>
+                        <div><p class="text-sm text-gray-500">Total Applicants</p><p class="text-2xl font-bold" id="stat-applicants">0</p></div>
+                    </div>
+                    <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex items-center">
+                        <div class="p-3 rounded-full bg-green-50 text-brand-green mr-4"><i class="ph ph-check-circle text-2xl"></i></div>
+                        <div><p class="text-sm text-gray-500">Approved</p><p class="text-2xl font-bold" id="stat-approved">0</p></div>
+                    </div>
+                </div>
+
+                <div id="projects-container" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></div>
+            </div>
+
+            <div id="view-applications" class="hidden fade-in max-w-5xl mx-auto">
+                <div id="back-button-container" class="hidden mb-6">
+                    <button onclick="goBackToProjects()" class="flex items-center text-gray-500 hover:text-brand-blue font-medium transition-colors group">
+                        <div class="w-8 h-8 rounded-full bg-white border border-gray-200 flex items-center justify-center mr-3 shadow-sm group-hover:border-brand-blue group-hover:text-brand-blue"><i class="ph ph-arrow-left text-lg"></i></div>
+                        Back to Projects
                     </button>
                 </div>
 
-                <!-- Projects Grid -->
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" id="projects-container">
-
-                    <!-- Project Card 1 -->
-                    <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition">
-                        <div class="flex justify-between items-start mb-4">
-                            <span
-                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                Published
-                            </span>
-                            <div class="flex gap-2">
-                                <button class="text-gray-400 hover:text-gsoc-blue"><i
-                                        class="ph ph-pencil-simple"></i></button>
-                                <button class="text-gray-400 hover:text-gsoc-red"><i class="ph ph-trash"></i></button>
-                            </div>
-                        </div>
-                        <h3 class="text-lg font-bold text-gray-900 mb-2">Distributed Cache System</h3>
-                        <p class="text-gray-500 text-sm mb-4 line-clamp-3">
-                            Implementing a distributed caching mechanism using Go to improve microservice latency. This
-                            project focuses on high availability and fault tolerance across distributed nodes.
-                        </p>
-                        <div class="flex flex-wrap gap-2 mt-auto">
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Go</span>
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Distributed Systems</span>
-                        </div>
-                    </div>
-
-                    <!-- Project Card 2 -->
-                    <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition">
-                        <div class="flex justify-between items-start mb-4">
-                            <span
-                                class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                Draft
-                            </span>
-                            <div class="flex gap-2">
-                                <button class="text-gray-400 hover:text-gsoc-blue"><i
-                                        class="ph ph-pencil-simple"></i></button>
-                                <button class="text-gray-400 hover:text-gsoc-red"><i class="ph ph-trash"></i></button>
-                            </div>
-                        </div>
-                        <h3 class="text-lg font-bold text-gray-900 mb-2">GraphQL API Migration</h3>
-                        <p class="text-gray-500 text-sm mb-4 line-clamp-3">
-                            Migrating our existing REST API to GraphQL to reduce over-fetching and improve frontend
-                            performance. Requires schema design and resolver implementation.
-                        </p>
-                        <div class="flex flex-wrap gap-2 mt-auto">
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">Node.js</span>
-                            <span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">GraphQL</span>
-                        </div>
-                    </div>
-
+                <div class="mb-8">
+                    <h1 class="text-3xl font-bold text-gray-900" id="app-view-title">Review Applications</h1>
+                    <p class="text-gray-500 mt-1">Details of registered students.</p>
                 </div>
+                <div id="apps-container" class="space-y-4"></div>
             </div>
-
-            <!-- APPLICATIONS SECTION (Hidden by default) -->
-            <div id="view-applications" class="max-w-5xl mx-auto hidden">
-                <div class="mb-6">
-                    <h1 class="text-2xl font-bold text-gray-900">Review Applications</h1>
-                    <p class="text-sm text-gray-500">Approve or reject student proposals for your projects.</p>
-                </div>
-
-                <div class="space-y-4">
-
-                    <!-- Application Card 1 (Pending) -->
-                    <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm flex flex-col md:flex-row gap-6"
-                        id="app-card-1">
-                        <div class="flex-shrink-0">
-                            <div
-                                class="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-gsoc-blue font-bold text-lg">
-                                AS
-                            </div>
-                        </div>
-                        <div class="flex-grow">
-                            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-2">
-                                <div>
-                                    <h3 class="text-lg font-bold text-gray-900">Alice Smith</h3>
-                                    <p class="text-sm text-gray-500">Applied for: <span
-                                            class="font-medium text-gray-700">Distributed Cache System</span></p>
-                                </div>
-                                <span
-                                    class="status-badge px-3 py-1 rounded-full text-xs font-bold status-pending mt-2 sm:mt-0 w-fit">
-                                    Pending Review
-                                </span>
-                            </div>
-
-                            <div class="bg-gray-50 p-3 rounded-lg border border-gray-100 mb-4">
-                                <p class="text-sm text-gray-600 italic">"I have experience with Go routines and have
-                                    previously built a simple LRU cache. I propose to use consistent hashing for..."</p>
-                                <a href="#"
-                                    class="text-xs text-gsoc-blue font-medium hover:underline mt-1 inline-block">View
-                                    Full Proposal PDF</a>
-                            </div>
-
-                            <div class="flex flex-wrap gap-4 text-xs text-gray-500 mb-4">
-                                <span class="flex items-center"><i class="ph ph-student mr-1"></i> 3rd Year,
-                                    B.Tech</span>
-                                <span class="flex items-center"><i class="ph ph-envelope mr-1"></i>
-                                    alice@university.edu</span>
-                            </div>
-
-                            <div class="action-buttons flex gap-3">
-                                <button onclick="updateStatus('app-card-1', 'approved')"
-                                    class="flex-1 sm:flex-none px-4 py-2 bg-gsoc-green text-white text-sm font-medium rounded hover:bg-green-600 transition">
-                                    Approve
-                                </button>
-                                <button onclick="updateStatus('app-card-1', 'rejected')"
-                                    class="flex-1 sm:flex-none px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition">
-                                    Reject
-                                </button>
-                            </div>
-                            <div class="undo-action hidden mt-2">
-                                <button onclick="resetStatus('app-card-1')"
-                                    class="text-xs text-gsoc-blue hover:underline flex items-center">
-                                    <i class="ph ph-arrow-u-up-left mr-1"></i> Change Decision
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Application Card 2 (Pending) -->
-                    <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm flex flex-col md:flex-row gap-6"
-                        id="app-card-2">
-                        <div class="flex-shrink-0">
-                            <div
-                                class="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center text-purple-600 font-bold text-lg">
-                                MK
-                            </div>
-                        </div>
-                        <div class="flex-grow">
-                            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-2">
-                                <div>
-                                    <h3 class="text-lg font-bold text-gray-900">Mike Kim</h3>
-                                    <p class="text-sm text-gray-500">Applied for: <span
-                                            class="font-medium text-gray-700">GraphQL API Migration</span></p>
-                                </div>
-                                <span
-                                    class="status-badge px-3 py-1 rounded-full text-xs font-bold status-pending mt-2 sm:mt-0 w-fit">
-                                    Pending Review
-                                </span>
-                            </div>
-
-                            <div class="bg-gray-50 p-3 rounded-lg border border-gray-100 mb-4">
-                                <p class="text-sm text-gray-600 italic">"I'm a Node.js enthusiast. My plan involves
-                                    using Apollo Server and creating a middleware layer to wrap the existing..."</p>
-                                <a href="#"
-                                    class="text-xs text-gsoc-blue font-medium hover:underline mt-1 inline-block">View
-                                    Full Proposal PDF</a>
-                            </div>
-
-                            <div class="flex flex-wrap gap-4 text-xs text-gray-500 mb-4">
-                                <span class="flex items-center"><i class="ph ph-student mr-1"></i> 2nd Year, M.Sc</span>
-                                <span class="flex items-center"><i class="ph ph-envelope mr-1"></i> mike@tech.edu</span>
-                            </div>
-
-                            <div class="action-buttons flex gap-3">
-                                <button onclick="updateStatus('app-card-2', 'approved')"
-                                    class="flex-1 sm:flex-none px-4 py-2 bg-gsoc-green text-white text-sm font-medium rounded hover:bg-green-600 transition">
-                                    Approve
-                                </button>
-                                <button onclick="updateStatus('app-card-2', 'rejected')"
-                                    class="flex-1 sm:flex-none px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition">
-                                    Reject
-                                </button>
-                            </div>
-                            <div class="undo-action hidden mt-2">
-                                <button onclick="resetStatus('app-card-2')"
-                                    class="text-xs text-gsoc-blue hover:underline flex items-center">
-                                    <i class="ph ph-arrow-u-up-left mr-1"></i> Change Decision
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Application Card 3 (Previously Rejected Example with Undo option) -->
-                    <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm flex flex-col md:flex-row gap-6"
-                        id="app-card-3">
-                        <div class="flex-shrink-0">
-                            <div
-                                class="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-lg">
-                                RJ
-                            </div>
-                        </div>
-                        <div class="flex-grow">
-                            <div class="flex flex-col sm:flex-row sm:justify-between sm:items-start mb-2">
-                                <div>
-                                    <h3 class="text-lg font-bold text-gray-900">Raj Patel</h3>
-                                    <p class="text-sm text-gray-500">Applied for: <span
-                                            class="font-medium text-gray-700">Distributed Cache System</span></p>
-                                </div>
-                                <span
-                                    class="status-badge px-3 py-1 rounded-full text-xs font-bold status-rejected mt-2 sm:mt-0 w-fit">
-                                    Rejected
-                                </span>
-                            </div>
-
-                            <div class="bg-gray-50 p-3 rounded-lg border border-gray-100 mb-4">
-                                <p class="text-sm text-gray-600 italic">"I want to learn Go. I don't have much
-                                    experience but I am a quick learner..."</p>
-                            </div>
-
-                            <div class="flex flex-wrap gap-4 text-xs text-gray-500 mb-4">
-                                <span class="flex items-center"><i class="ph ph-student mr-1"></i> 1st Year,
-                                    B.Tech</span>
-                            </div>
-
-                            <div class="action-buttons hidden flex gap-3">
-                                <button onclick="updateStatus('app-card-3', 'approved')"
-                                    class="flex-1 sm:flex-none px-4 py-2 bg-gsoc-green text-white text-sm font-medium rounded hover:bg-green-600 transition">
-                                    Approve
-                                </button>
-                                <button onclick="updateStatus('app-card-3', 'rejected')"
-                                    class="flex-1 sm:flex-none px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition">
-                                    Reject
-                                </button>
-                            </div>
-                            <div class="undo-action mt-2">
-                                <button onclick="resetStatus('app-card-3')"
-                                    class="text-xs text-gsoc-blue hover:underline flex items-center">
-                                    <i class="ph ph-arrow-u-up-left mr-1"></i> Change Decision
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-            </div>
-
         </main>
     </div>
 
-    <!-- Post Project Modal -->
-    <div id="project-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden z-50">
-        <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-xl bg-white">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-lg font-bold text-gray-900">Post New Project</h3>
-                <button onclick="toggleModal('project-modal')" class="text-gray-400 hover:text-gray-600">
-                    <i class="ph ph-x text-xl"></i>
-                </button>
+    <div id="project-modal" class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4 fade-in">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h3 class="font-bold text-lg">Create New Project</h3>
+                <button onclick="toggleModal('project-modal')" class="text-gray-400 hover:text-gray-600"><i class="ph ph-x text-xl"></i></button>
             </div>
-            <form id="new-project-form" onsubmit="addProject(event)">
-                <div class="mb-4">
-                    <label class="block text-gray-700 text-sm font-bold mb-2" for="title">Project Title</label>
-                    <input
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-gsoc-green"
-                        id="title" type="text" placeholder="e.g. AI Chatbot" required>
-                </div>
-                <div class="mb-4">
-                    <label class="block text-gray-700 text-sm font-bold mb-2" for="description">Description</label>
-                    <textarea
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-gsoc-green"
-                        id="description" rows="4" placeholder="Describe the project goals..." required></textarea>
-                </div>
-                <div class="mb-6">
-                    <label class="block text-gray-700 text-sm font-bold mb-2" for="tags">Tech Stack (comma
-                        separated)</label>
-                    <input
-                        class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline focus:border-gsoc-green"
-                        id="tags" type="text" placeholder="Python, React, AWS">
-                </div>
-                <div class="flex items-center justify-end">
-                    <button type="button" onclick="toggleModal('project-modal')"
-                        class="mr-3 px-4 py-2 text-gray-500 hover:text-gray-700 text-sm font-medium">Cancel</button>
-                    <button type="submit"
-                        class="px-4 py-2 bg-gsoc-green text-white rounded hover:bg-green-600 text-sm font-medium shadow">Publish
-                        Project</button>
+            <form onsubmit="addProject(event)" class="p-6 space-y-4">
+                <div><label class="block text-sm font-medium mb-1">Title</label><input id="title" type="text" required class="w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-brand-green/20 outline-none"></div>
+                <div><label class="block text-sm font-medium mb-1">Description</label><textarea id="description" rows="3" required class="w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-brand-green/20 outline-none"></textarea></div>
+                <div><label class="block text-sm font-medium mb-1">Tags</label><input id="tags" type="text" placeholder="Python, AI" class="w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-brand-green/20 outline-none"></div>
+                <div class="flex justify-end gap-3 pt-2">
+                    <button type="button" onclick="toggleModal('project-modal')" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                    <button type="submit" class="px-6 py-2 bg-brand-green text-white rounded-lg hover:bg-green-700">Publish</button>
                 </div>
             </form>
         </div>
     </div>
 
     <script>
-        // --- Tab Switching Logic ---
-        function switchTab(tabName) {
-            // Hide all views
+        // State
+        let globalProjects = [];
+        let globalApplications = [];
+        let activeFilter = null;
+
+        // Fetch Data from PHP
+        async function loadData() {
+            try {
+                const res = await fetch('?action=get_data');
+                const data = await res.json();
+                
+                globalProjects = data.projects;
+                globalApplications = data.applications;
+                
+                updateStats();
+                refreshUI();
+            } catch (err) { console.error("Error:", err); }
+        }
+
+        function updateStats() {
+            document.getElementById('stat-projects').innerText = globalProjects.length;
+            document.getElementById('stat-applicants').innerText = globalApplications.length;
+            document.getElementById('stat-approved').innerText = globalApplications.filter(a => a.status === 'approved').length;
+        }
+
+        function refreshUI() { renderProjects(); renderApplications(); }
+
+        function renderProjects() {
+            const container = document.getElementById('projects-container');
+            container.innerHTML = '';
+            globalProjects.forEach(proj => {
+                const count = globalApplications.filter(app => app.project_title === proj.title).length;
+                const tags = proj.tags ? proj.tags.split(',').map(t => `<span class="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-md border">${t}</span>`).join('') : '';
+                
+                container.innerHTML += `
+                    <div class="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-lg transition-all flex flex-col h-full">
+                        <div class="p-6 flex-grow">
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="bg-green-100 text-green-800 text-xs font-bold px-2.5 py-0.5 rounded-full">${proj.status}</span>
+                                <button onclick="deleteProject(${proj.id})" class="text-gray-300 hover:text-brand-red"><i class="ph ph-trash text-lg"></i></button>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-900 mb-2">${proj.title}</h3>
+                            <p class="text-gray-600 text-sm line-clamp-3 mb-4">${proj.description}</p>
+                            <div class="flex flex-wrap gap-2">${tags}</div>
+                        </div>
+                        <div class="px-6 py-4 bg-gray-50 border-t rounded-b-xl flex justify-between items-center">
+                            <div class="flex items-center text-gray-700"><i class="ph ph-users text-lg mr-2 text-brand-blue"></i><span class="font-bold mr-1">${count}</span> <span class="text-sm">Registered</span></div>
+                            <button onclick="viewProjectApplicants('${proj.title}')" class="text-sm font-medium text-brand-blue hover:text-blue-700 flex items-center">View List <i class="ph ph-arrow-right ml-1"></i></button>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        function renderApplications() {
+            const container = document.getElementById('apps-container');
+            container.innerHTML = '';
+            
+            let displayApps = globalApplications;
+            const titleEl = document.getElementById('app-view-title');
+            const backBtn = document.getElementById('back-button-container');
+
+            if (activeFilter) {
+                displayApps = globalApplications.filter(app => app.project_title === activeFilter);
+                titleEl.innerHTML = `Applicants for <span class="text-brand-blue">"${activeFilter}"</span>`;
+                backBtn.classList.remove('hidden');
+            } else {
+                titleEl.textContent = "All Applications";
+                backBtn.classList.add('hidden');
+            }
+
+            const pending = globalApplications.filter(a => a.status === 'pending').length;
+            document.getElementById('pending-badge').innerText = pending;
+            document.getElementById('pending-badge').style.display = pending > 0 ? 'inline-block' : 'none';
+
+            if (displayApps.length === 0) {
+                container.innerHTML = `<div class="text-center py-16 bg-white rounded-xl border border-dashed text-gray-400">No applicants found.</div>`;
+                return;
+            }
+
+            displayApps.forEach(app => {
+                const initials = app.initials || app.name.slice(0,2).toUpperCase();
+                let statusBadge = app.status === 'pending' ? `<span class="bg-yellow-100 text-yellow-800 text-xs font-bold px-3 py-1 rounded-full">Pending</span>` : 
+                                  app.status === 'approved' ? `<span class="bg-green-100 text-green-800 text-xs font-bold px-3 py-1 rounded-full">Approved</span>` : 
+                                  `<span class="bg-red-100 text-red-800 text-xs font-bold px-3 py-1 rounded-full">Rejected</span>`;
+
+                let actions = app.status === 'pending' ? `
+                    <div class="flex gap-3 pt-3 border-t mt-3">
+                        <button onclick="updateStatus(${app.id}, 'approved')" class="flex-1 py-2 bg-brand-green text-white text-sm rounded-lg hover:bg-green-700">Approve</button>
+                        <button onclick="updateStatus(${app.id}, 'rejected')" class="flex-1 py-2 border text-gray-700 text-sm rounded-lg hover:bg-gray-50">Reject</button>
+                    </div>` : '';
+
+                container.innerHTML += `
+                    <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-sm flex flex-col md:flex-row gap-6">
+                        <div class="w-14 h-14 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xl border border-indigo-100 shrink-0">${initials}</div>
+                        <div class="flex-grow">
+                            <div class="flex justify-between mb-2">
+                                <div><h3 class="text-lg font-bold">${app.name}</h3><div class="text-sm text-gray-500">For: <b>${app.project_title}</b></div></div>
+                                <div>${statusBadge}</div>
+                            </div>
+                            <div class="bg-gray-50 rounded-lg p-3 grid grid-cols-2 gap-4 mb-3 text-sm text-gray-600">
+                                <div class="flex items-center"><i class="ph ph-envelope-simple mr-2"></i> ${app.email}</div>
+                                <div class="flex items-center"><i class="ph ph-student mr-2"></i> ${app.year}</div>
+                            </div>
+                            <div class="text-sm text-gray-600 italic p-3 border rounded mb-2">"${app.proposal_snippet}"</div>
+                            ${actions}
+                        </div>
+                    </div>`;
+            });
+        }
+
+        // Interaction Logic
+        function viewProjectApplicants(title) { activeFilter = title; switchTab('applications'); refreshUI(); document.querySelector('main').scrollTop = 0; }
+        function goBackToProjects() { activeFilter = null; refreshUI(); switchTab('projects'); }
+        
+        function switchTab(tab) {
             document.getElementById('view-projects').classList.add('hidden');
             document.getElementById('view-applications').classList.add('hidden');
-
-            // Remove active class from nav
-            document.getElementById('nav-projects').classList.remove('active', 'text-green-800', 'bg-green-50', 'border-r-4', 'border-gsoc-green');
-            document.getElementById('nav-applications').classList.remove('active', 'text-green-800', 'bg-green-50', 'border-r-4', 'border-gsoc-green');
-
-            // Show selected view
-            document.getElementById('view-' + tabName).classList.remove('hidden');
-
-            // Add active class to nav
-            const activeNav = document.getElementById('nav-' + tabName);
-            activeNav.classList.add('active');
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            document.getElementById('nav-'+tab).classList.add('active');
+            document.getElementById('view-'+tab).classList.remove('hidden');
         }
 
-        // --- Approve/Reject/Reset Logic ---
-        function updateStatus(cardId, status) {
-            const card = document.getElementById(cardId);
-            const badge = card.querySelector('.status-badge');
-            const buttons = card.querySelector('.action-buttons');
-            const undo = card.querySelector('.undo-action');
-
-            // If it was pending, decrease pending count
-            if (badge.textContent.trim() === 'Pending Review') {
-                updatePendingCount(-1);
-            }
-
-            // Update visual badge
-            if (status === 'approved') {
-                badge.className = 'status-badge px-3 py-1 rounded-full text-xs font-bold status-approved mt-2 sm:mt-0 w-fit';
-                badge.textContent = 'Approved';
-            } else if (status === 'rejected') {
-                badge.className = 'status-badge px-3 py-1 rounded-full text-xs font-bold status-rejected mt-2 sm:mt-0 w-fit';
-                badge.textContent = 'Rejected';
-            }
-
-            // Hide action buttons, show undo
-            buttons.classList.add('hidden');
-            buttons.classList.remove('flex'); // remove flex to hide completely
-            undo.classList.remove('hidden');
-        }
-
-        function resetStatus(cardId) {
-            const card = document.getElementById(cardId);
-            const badge = card.querySelector('.status-badge');
-            const buttons = card.querySelector('.action-buttons');
-            const undo = card.querySelector('.undo-action');
-
-            // Reset Badge
-            badge.className = 'status-badge px-3 py-1 rounded-full text-xs font-bold status-pending mt-2 sm:mt-0 w-fit';
-            badge.textContent = 'Pending Review';
-
-            // Show action buttons, hide undo
-            buttons.classList.remove('hidden');
-            buttons.classList.add('flex'); // add flex back
-            undo.classList.add('hidden');
-
-            // Increase pending count
-            updatePendingCount(1);
-        }
-
-        function updatePendingCount(change) {
-            const counter = document.getElementById('pending-count');
-            let current = parseInt(counter.textContent) || 0;
-            let newCount = current + change;
-            counter.textContent = newCount;
-
-            if (newCount <= 0) {
-                counter.style.display = 'none';
-            } else {
-                counter.style.display = 'inline-block';
-            }
-        }
-
-        // --- Modal Logic ---
-        function toggleModal(modalID) {
-            document.getElementById(modalID).classList.toggle("hidden");
-        }
-
-        // --- Add Project Logic (Simulation) ---
-        function addProject(e) {
+        async function addProject(e) {
             e.preventDefault();
-            const title = document.getElementById('title').value;
-            const desc = document.getElementById('description').value;
-            const tags = document.getElementById('tags').value.split(',').map(tag => tag.trim());
-
-            const container = document.getElementById('projects-container');
-
-            // Create new card HTML
-            const newCard = document.createElement('div');
-            newCard.className = 'bg-white rounded-xl border border-gray-200 p-6 shadow-sm hover:shadow-md transition';
-
-            let tagsHtml = '';
-            tags.forEach(tag => {
-                if (tag) tagsHtml += `<span class="px-2 py-1 bg-gray-100 text-gray-600 rounded text-xs">${tag}</span> `;
-            });
-
-            newCard.innerHTML = `
-                <div class="flex justify-between items-start mb-4">
-                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        Published
-                    </span>
-                    <div class="flex gap-2">
-                        <button class="text-gray-400 hover:text-gsoc-blue"><i class="ph ph-pencil-simple"></i></button>
-                        <button class="text-gray-400 hover:text-gsoc-red"><i class="ph ph-trash"></i></button>
-                    </div>
-                </div>
-                <h3 class="text-lg font-bold text-gray-900 mb-2">${title}</h3>
-                <p class="text-gray-500 text-sm mb-4 line-clamp-3">${desc}</p>
-                <div class="flex flex-wrap gap-2 mt-auto">
-                    ${tagsHtml}
-                </div>
-            `;
-
-            // Add to grid
-            container.insertBefore(newCard, container.firstChild);
-
-            // Close modal & reset form
-            toggleModal('project-modal');
-            document.getElementById('new-project-form').reset();
+            await fetch('?action=add_project', { method: 'POST', body: JSON.stringify({ 
+                title: document.getElementById('title').value, 
+                description: document.getElementById('description').value, 
+                tags: document.getElementById('tags').value.split(',').map(t => t.trim()) 
+            })});
+            toggleModal('project-modal'); e.target.reset(); loadData();
         }
+
+        async function updateStatus(id, status) {
+            await fetch('?action=update_app_status', { method: 'POST', body: JSON.stringify({ id, status }) });
+            loadData();
+        }
+
+        async function deleteProject(id) {
+            if(!confirm("Delete project?")) return;
+            await fetch('?action=delete_project', { method: 'POST', body: JSON.stringify({ id }) });
+            loadData();
+        }
+
+        function toggleModal(id) { document.getElementById(id).classList.toggle('hidden'); }
+
+        // Start
+        loadData();
     </script>
 </body>
-
 </html>

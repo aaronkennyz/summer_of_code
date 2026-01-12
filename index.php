@@ -4,11 +4,17 @@ session_set_cookie_params(0, '/');
 session_start();
 
 // 2. CHECK LOGIN STATUS
+
 $isLoggedIn = isset($_SESSION['user_id']) || isset($_SESSION['mentor_id']);
 $displayName = $_SESSION['user_name'] ?? $_SESSION['mentor_name'] ?? 'User';
 
 // 3. DASHBOARD LINK (Updated: Now points to projects.php)
-$dashboardLink = "./webpages/projects.php"; 
+$dashboardLink = "./dash/mentor.php"; 
+if (isset($_SESSION['user_id'])) {
+    $dashboardLink = "./webpages/projects.php";
+}
+
+
 ?>
 
 <!DOCTYPE html>
@@ -221,7 +227,7 @@ $dashboardLink = "./webpages/projects.php";
                 <div class="col-span-1 md:col-span-1">
                     <div class="flex items-center gap-2 mb-4">
                         <span class="text-2xl font-bold text-gray-500">S</span>
-                        <span class="font-bold text-gray-600">Slugworks Open Source</span>
+                        <span class="font-bold text-gray-600">Slugworks Open Source in collaboration with KENBRISELLERIS</span>
                     </div>
                     <p class="text-gray-500 text-sm">Bringing student developers into open source software development.</p>
                 </div>

@@ -1,2 +1,4 @@
 #ECHO is on.
 *.bat
+./dash/apply_logic.php
+.dash/manage_logic.php

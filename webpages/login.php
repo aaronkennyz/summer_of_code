@@ -117,31 +117,49 @@ if (isset($_POST['mentor_register'])) {
 
 // 4. MENTOR SIGN IN (Logic Verified)
 if (isset($_POST['mentor_login'])) {
-    $active_view = "mentor"; // Keeps the mentor form open on reload
+    $active_view = "mentor";
+    
+    // 1. CHECK IF INPUT IS RECEIVED
+    if (!isset($_POST['mentor-email'])) {
+        die("ERROR: The HTML input name does not match 'mentor-email'. Check your form.");
+    }
+
     $email = filter_input(INPUT_POST, "mentor-email", FILTER_SANITIZE_EMAIL);
     $password = $_POST['mentor-password'];
+    
+    // Trim whitespace just in case
+    $email = trim($email); 
 
+    echo "DEBUG: Searching DB for email: [" . $email . "]<br>";
+
+    // 2. CHECK QUERY EXECUTION
     $stmt = $conn->prepare("SELECT * FROM mentorlogs WHERE memail = ?");
+    
+    if (!$stmt) {
+        die("SQL ERROR: " . $conn->error . " (Check if column 'memail' exists in 'mentorlogs')");
+    }
+
     $stmt->bind_param("s", $email);
     $stmt->execute();
     $result = $stmt->get_result();
 
+    echo "DEBUG: Rows found: " . $result->num_rows . "<br>";
+
     if ($row = $result->fetch_assoc()) {
-        // Verify hashed password
+        echo "User Found! Verifying password...<br>";
         if (password_verify($password, $row['mpass'])) {
-            // Set Session Variables
             $_SESSION['mentor_id'] = $row['id'];
             $_SESSION['mentor_name'] = $row['mname'];
-            $_SESSION['role'] = 'mentor'; // Crucial for index.php to know who logged in
-            
-            echo "<script>setTimeout(function(){ window.location.href = '../index.php'; }, 1000);</script>";
-            $message = "Mentor Sign In Successful!"; $msg_type = "success";
+            $_SESSION['role'] = 'mentor';
+            header("Location: ../index.php");
+            exit();
         } else {
-            $message = "Invalid Password."; $msg_type = "error";
+            echo "Password Verify Failed.";
         }
     } else {
-        $message = "Mentor account not found."; $msg_type = "error";
+        echo "Account still not found. Please check spelling or column names.";
     }
+    exit(); // Stop script to see messages
 }
 ?>
 
